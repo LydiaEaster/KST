@@ -1,1 +1,67 @@
+import json
+import sys
+import datetime
+from dateutil import parser
+import boto3
+import re
+from boto3.dynamodb.conditions import Key
 
+def main():
+    session = boto3.Session(region_name='', aws_access_key_id='', aws_secret_access_key='')
+    dynamodb = session.resource('dynamodb')
+    maxLastUplinkTime = 4
+    devicesOfflineFourMinutes = []
+    totalDeviceCount = 0
+    last_evaluated_key = None  # Initialize the LastEvaluatedKey to None
+
+    table = dynamodb.Table('Factory')
+
+    currentTime = datetime.datetime.now()
+    currentTime = currentTime.replace(microsecond=0)
+    print("current time is ", currentTime)
+    print("")
+
+    while True:
+        if last_evaluated_key:
+            response = table.query(
+                KeyConditionExpression=Key("pk").eq("HEALTH#"),
+                ExclusiveStartKey=last_evaluated_key  # Use the last evaluated key to continue scanning
+            )
+        else:
+            response = table.query(
+                KeyConditionExpression=Key("pk").eq("HEALTH#")
+            )
+
+        items = response['Items']
+        for item in items:
+            totalDeviceCount += 1
+            deviceSk = item['sk']
+            print(totalDeviceCount, "your device is ", deviceSk)
+
+            try:
+                lorawanData = item['lorawan']
+
+                # seeing if each item has had an uplink in the last four minutes or not
+                lastUplink = lorawanData['lastUplink']
+                print(lastUplink)
+                lastUplink = parser.parse(lastUplink)
+                naive = lastUplink.replace(tzinfo=None)
+
+                minutes_diff = (currentTime - naive).total_seconds() / 60.0
+                if minutes_diff > maxLastUplinkTime:
+                    print("DEVICE: ", deviceSk, "\n OFFLINE FOR FOUR MINUTES or more")
+                    devicesOfflineFourMinutes.append(item['sk'])
+
+            except Exception as e:
+                print("ERROR!", e)
+
+        last_evaluated_key = response.get('LastEvaluatedKey')  # Get the LastEvaluatedKey
+        if not last_evaluated_key:
+            break  # If there is no more data, break the loop
+
+    print("TOTAL NUMBER OF DEVICES: ", totalDeviceCount)
+    print("DEVICES OFFLINE FOR FOUR MINUTES OR MORE: ", devicesOfflineFourMinutes)
+    print("NUMBER OF DEVICES OFFLINE FOR FOUR MINUTES OR MORE: ", len(devicesOfflineFourMinutes))
+
+if __name__ == "__main__":
+    main()
