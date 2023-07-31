@@ -1,0 +1,118 @@
+import json
+import sys
+import datetime
+from dateutil import parser
+import boto3
+import re
+from boto3.dynamodb.conditions import Key, Attr
+
+# reference to the boto3 dynamodb resource
+#key_file = '/etc/.ssh/authorized_keys'
+#line_number = 0
+#with open(key_file, 'r') as file:
+#  for line in file:
+#    print(line_number, line)
+#    if line_number == 0:
+#      print(line_number, line)
+#      ACCESS_KEY_ID=line.replace('ACCESS_KEY_ID=', '')
+#      print(line_number, "access key is ", ACCESS_KEY_ID)
+#    else:
+#      print(line_number, line)
+#      SECRET_ACCESS_KEY=line.replace('SECRET_ACCESS_KEY=', '')
+#      print("secret access key is ", SECRET_ACCESS_KEY)
+#    line_number = line_number + 1
+session = boto3.Session(region_name='us-west-2', 
+  aws_access_key_id='AKIAR2AGCZOV5TBWRVZR', 
+  aws_secret_access_key='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')
+dynamodb = session.resource('dynamodb') #aws_access_key_id=ACCESS_KEY_ID, aws_secret_access_key=SECRET_ACCESS_KEY)
+maxLastUplinkTime = 4
+#lorawanIsNone = False
+health = 'HEALTH#'
+
+def main():
+  
+  table = dynamodb.Table('Factory')
+
+  print("item count ", table.item_count)
+  attrs = table.attribute_definitions
+  print("attribute: ", attrs)
+  #Make Initial Query in the key field called lorawan where the value is equal to OR GREATER THAN the timeFourMinutesAgo 
+  currentTime = datetime.datetime.now()
+  currentTime = currentTime.replace(microsecond=0)
+  #print("current time is ", currentTime)
+  #print("")
+
+  lastEvaluatedKey=None
+  items=[]   
+
+  successfulLoraReads=0
+  unsuccessfulLoraReads=0
+  devicesOfflineFourMinutes = []
+  
+  totalDeviceCount=0
+
+#Extract the Results
+  while True:
+    print("in while")
+    if lastEvaluatedKey == None:
+      response = table.scan()
+    else:
+      response = table.scan(
+        ExclusiveStartKey=lastEvaluatedKey
+    )
+    
+    items.extend(response['Items'])
+    if 'LastEvalutedKey' in response:
+      lastEvaluatedKey=response['LastEvaluatedKey']
+    else:
+      print("last evaluated key was ", lastEvaluatedKey)
+      break  
+  
+  print("length of items is ", len(items))
+  for item in items:
+    totalDeviceCount=totalDeviceCount+1
+      
+    deviceSk = item['sk']
+    print(totalDeviceCount, "DEVICE: ", deviceSk)
+    
+    try:
+      lorawanData = item['lorawan']
+      
+      successfulLoraReads = successfulLoraReads + 1
+      
+        # seeing if each item has had an uplink in the last four minutes or not
+      lastUplink = lorawanData['lastUplink']
+      print("LAST UPLINK: ", lastUplink)
+      lastUplink = parser.parse(lastUplink)
+      naive = lastUplink.replace(tzinfo=None)
+  
+      minutes_diff = (currentTime - naive).total_seconds() / 60.0
+      if minutes_diff > maxLastUplinkTime:
+        print("DEVICE: ", deviceSk, "\n OFFLINE FOR FOUR MINUTES or more")
+        devicesOfflineFourMinutes.append(item['sk'])
+      
+      
+    except Exception as e:
+      #print("ERROR!", e)
+      unsuccessfulLoraReads = unsuccessfulLoraReads + 1
+  print("last evaluated key was ", lastEvaluatedKey)
+  print("through items ")
+  print("end length of items is ", len(items))
+#    expression_attribute_values = {
+#      ':health': 'HEALTH#',
+#      ':deviceSk': deviceSk
+#    
+#    response = table.query(
+#      KeyConditionExpression='pk = :health AND sk > :deviceSk',
+#      ExpressionAttributeValues=expression_attribute_values
+#    )
+#    items = response['Items']
+
+#    print(items)
+#    x=x+1
+  print("TOTAL NUMBER OF SUCCESSFUL LORA READS: ", successfulLoraReads)
+  print("TOTAL NUMBER OF UNSUCCESSFUL LORA READS: ", unsuccessfulLoraReads)
+  print("DEVICES OFFLINE FOR FOUR MINUTES OR MORE: ", devicesOfflineFourMinutes)
+  print("NUMBER OF DEVICES OFFLINE FOR FOUR MINUTES OR MORE: ", len(devicesOfflineFourMinutes))
+
+main()
