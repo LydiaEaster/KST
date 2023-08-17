@@ -1,0 +1,24 @@
+    class BackgroundColourMatcher(private val expectedColourResId: Int) : BoundedMatcher<View, View>(View::class.java) {
+
+        private var mColorFromView: Int = 0
+
+        override fun matchesSafely(item: View): Boolean {
+            if (item.background == null) {
+                return false
+            }
+            val context: Context = item.context
+            val expectedColor = ContextCompat.getColor(context, expectedColourResId)
+            mColorFromView = (item.background as ColorDrawable).color
+            return mColorFromView == expectedColor
+        }
+
+        override fun describeTo(description: Description) {
+            description.appendText("Color did not match. Expected color: $expectedColourResId, actual color: $mColorFromView")
+        }
+    }
+
+    object CustomTestMatchers {
+        fun withBackgroundColour(@ColorRes expectedColor: Int): Matcher<View> {
+            return BackgroundColourMatcher(expectedColor)
+        }
+    }
