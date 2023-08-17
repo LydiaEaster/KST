@@ -1,24 +1,52 @@
-    class BackgroundColourMatcher(private val expectedColourResId: Int) : BoundedMatcher<View, View>(View::class.java) {
+        fun testPixelColor() {
+            // Create a UiDevice instance
+            val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
 
-        private var mColorFromView: Int = 0
+            // Get the coordinates (x, y) of the pixel you want to test
+            val x = 100
+            val y = 200
+            val screenshotFilePath = "C:\\Users\\Lydia\\Desktop\\Repos\\pedconnex-android\\PedConnex\\PedConnexScreenshots\\NewBitMapImage"
+            val screenshotFile = File(screenshotFilePath)
 
-        override fun matchesSafely(item: View): Boolean {
-            if (item.background == null) {
-                return false
+            // Take a screenshot of the current display
+            device.takeScreenshot(screenshotFile)
+
+            // Load the screenshot as a Bitmap
+            val bitmap = BitmapFactory.decodeFile(screenshotFile.absolutePath)
+
+            if (bitmap != null) {
+                // Get the color of the pixel at the specified coordinates
+                val pixelColor = bitmap.getPixel(x, y)
+
+                // Define the expected color value
+                val expectedColor = -0xFF1EBC4E
+
+                // Assert that the actual pixel color matches the expected color
+                assertEquals(expectedColor, pixelColor)
             }
-            val context: Context = item.context
-            val expectedColor = ContextCompat.getColor(context, expectedColourResId)
-            mColorFromView = (item.background as ColorDrawable).color
-            return mColorFromView == expectedColor
+            else {
+                throw AssertionError("Failed to decode the screenshot bitmap")
+            }
         }
 
-        override fun describeTo(description: Description) {
-            description.appendText("Color did not match. Expected color: $expectedColourResId, actual color: $mColorFromView")
-        }
+        testPixelColor()
     }
 
-    object CustomTestMatchers {
-        fun withBackgroundColour(@ColorRes expectedColor: Int): Matcher<View> {
-            return BackgroundColourMatcher(expectedColor)
+    private fun childAtPosition(
+        parentMatcher: Matcher<View>, position: Int
+    ): Matcher<View> {
+
+        return object : TypeSafeMatcher<View>() {
+            override fun describeTo(description: Description) {
+                description.appendText("Child at position $position in parent ")
+                parentMatcher.describeTo(description)
+            }
+
+            public override fun matchesSafely(view: View): Boolean {
+                val parent = view.parent
+                return parent is ViewGroup && parentMatcher.matches(parent)
+                        && view == parent.getChildAt(position)
+            }
         }
+    }
     }
